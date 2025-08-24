@@ -6,50 +6,42 @@ import { google } from 'googleapis';
 
 const router = express.Router();
 
-// Multer สำหรับอ่านไฟล์จาก request (รองรับหลายไฟล์)
+// Multer สำหรับอ่านไฟล์จาก request
 const upload = multer({ 
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
 
-// โหลด service account จาก Environment Variable
+// โหลด Service Account
 const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
-// เช็คว่า Firebase เคย initialize หรือยัง
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  storageBucket: 'tunejoy-music-c4939.appspot.com',
-});
-
+// Firebase
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    storageBucket: 'tunejoy-music-c4939.appspot.com',
+  });
+}
 const db = admin.firestore();
 
-// ใช้ Service Account สำหรับ Google Drive
+// Google Drive
 const auth = new google.auth.GoogleAuth({
   credentials: serviceAccount,
   scopes: ['https://www.googleapis.com/auth/drive'],
 });
 const drive = google.drive({ version: 'v3', auth });
-
-// ใส่ folderId ของโฟลเดอร์ Google Drive
 const folderId = '13ts1MGAPzPteh-HfR7D_IebDU_v8TOjR';
 
-// ฟังก์ชันสร้าง URL สำหรับสตรีมเสียง
-function createStreamableUrl(fileId) {
-  return `https://drive.google.com/uc?export=download&id=${fileId}`;
-}
+// ฟังก์ชันสร้าง URL สำหรับสตรีม / รูป
+const createStreamableUrl = id => `https://drive.google.com/uc?export=download&id=${id}`;
+const createImageUrl = id => `https://drive.google.com/uc?export=view&id=${id}`;
 
-// ฟังก์ชันสร้าง URL สำหรับแสดงรูปภาพ
-function createImageUrl(fileId) {
-  return `https://drive.google.com/uc?export=view&id=${fileId}`;
-}
-// ฟังก์ชันอัปโหลดไฟล์ไปยัง Google Drive
-async function uploadToDrive(file, fileName = null) {
+// ฟังก์ชันอัปโหลดไฟล์
+async function uploadToDrive(file) {
   const fileStream = streamifier.createReadStream(file.buffer);
-  const uploadFileName = fileName || file.originalname;
-
   const response = await drive.files.create({
     requestBody: {
-      name: uploadFileName,
+      name: file.originalname,
       mimeType: file.mimetype,
       parents: [folderId],
     },
@@ -59,36 +51,16 @@ async function uploadToDrive(file, fileName = null) {
     },
     fields: 'id,name,mimeType',
   });
-
-  // ตั้งให้ใครก็ได้เข้าถึงไฟล์
   await drive.permissions.create({
     fileId: response.data.id,
     requestBody: { role: 'reader', type: 'anyone' },
   });
-
   return response.data;
 }
 
-// ฟังก์ชันลบไฟล์จาก Google Drive
-async function deleteFromDrive(fileId) {
-  try {
-    await drive.files.delete({ fileId });
-    return true;
-  } catch (error) {
-    console.error('Error deleting file from Google Drive:', error);
-    return false;
-  }
-}
-
-// --- Routes ต่าง ๆ --- //
-// POST /add-song
-router.post('/add-song', upload.fields([
-  { name: 'file', maxCount: 1 },
-  { name: 'image', maxCount: 1 },
-]), async (req, res) => {
-  if (!req.files || !req.files['file']) {
-    return res.status(400).json({ message: 'No audio file uploaded.' });
-  }
+// Routes
+router.post('/add-song', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'image', maxCount: 1 }]), async (req, res) => {
+  if (!req.files || !req.files['file']) return res.status(400).json({ message: 'No audio file uploaded.' });
 
   try {
     const audioFile = req.files['file'][0];
@@ -97,8 +69,7 @@ router.post('/add-song', upload.fields([
     const audioDriveFile = await uploadToDrive(audioFile);
     const audioUrl = createStreamableUrl(audioDriveFile.id);
 
-    let imageUrl = null;
-    let imageDriveId = null;
+    let imageUrl = null, imageDriveId = null;
     if (imageFile) {
       const imageDriveFile = await uploadToDrive(imageFile);
       imageUrl = createImageUrl(imageDriveFile.id);
@@ -118,9 +89,7 @@ router.post('/add-song', upload.fields([
     };
 
     const docRef = await db.collection('songs').add(songData);
-
-    res.status(200).json({ message: 'Song and image added successfully', song: { id: docRef.id, ...songData } });
-
+    res.status(200).json({ message: 'Song added', song: { id: docRef.id, ...songData } });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error uploading to Google Drive', error: error.message });
