@@ -7,7 +7,7 @@ const app = express();
 app.use(express.json());
 
 // Routes
-app.use('/songRoutes', songRoutes); // เปลี่ยน path ให้เป็น /songs จะดู cleaner
+app.use('/songRoutes', songRoutes); // เปลี่ยน path ให้เป็น /songs จะดู cleanerx
 
 // Start server
 const PORT = 3000;
