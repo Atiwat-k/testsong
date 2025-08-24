@@ -1,5 +1,5 @@
 import express from 'express';
-import songRoutes from './songRoutes.js';
+import songRoutes from '../songRoutes.js';
 
 const app = express();
 
