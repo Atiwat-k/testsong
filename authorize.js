@@ -1,12 +1,11 @@
 import express from 'express';
-import fs from 'fs';
 import { google } from 'googleapis';
 
 const app = express();
 
-// โหลด credentials
-const credentials = JSON.parse(fs.readFileSync('credentials.json'));
-const { client_id, client_secret, redirect_uris } = credentials.web; // ใช้ .web สำหรับ Web App
+// โหลด credentials จาก Environment Variable
+const credentials = JSON.parse(process.env.GOOGLE_OAUTH_TOKEN); 
+const { client_id, client_secret, redirect_uris } = credentials.web; // สำหรับ Web App
 const oAuth2Client = new google.auth.OAuth2(
   client_id,
   client_secret,
@@ -26,11 +25,27 @@ app.get('/auth', (req, res) => {
 app.get('/oauth2callback', async (req, res) => {
   const code = req.query.code;
   if (!code) return res.send('No code found');
-  const { tokens } = await oAuth2Client.getToken(code);
-  oAuth2Client.setCredentials(tokens);
 
-  fs.writeFileSync('token.json', JSON.stringify(tokens));
-  res.send('Authorization successful! You can close this page.');
+  try {
+    const { tokens } = await oAuth2Client.getToken(code);
+    oAuth2Client.setCredentials(tokens);
+
+    // แทนการเขียนไฟล์ ให้แสดง token แล้วคัดลอกไปใส่ Environment Variable
+    console.log('Set this as GOOGLE_OAUTH_TOKEN:');
+    console.log(JSON.stringify(tokens, null, 2));
+
+    res.send('Authorization successful! Copy the token and set it as an Environment Variable (GOOGLE_OAUTH_TOKEN).');
+  } catch (err) {
+    console.error('Error retrieving access token', err);
+    res.send('Error retrieving access token');
+  }
 });
+
+// ตัวอย่างการใช้งาน token จาก Environment Variable
+if (process.env.GOOGLE_OAUTH_TOKEN) {
+  oAuth2Client.setCredentials(JSON.parse(process.env.GOOGLE_OAUTH_TOKEN));
+  const drive = google.drive({ version: 'v3', auth: oAuth2Client });
+  // คุณสามารถใช้ drive API ที่นี่
+}
 
 app.listen(3000, () => console.log('Server running on http://localhost:3000'));
