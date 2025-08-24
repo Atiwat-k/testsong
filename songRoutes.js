@@ -5,8 +5,9 @@ import admin from 'firebase-admin';
 import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
-import serviceAccount from './serviceAccountKey.json' assert { type: "json" };
-
+const serviceAccount = JSON.parse(
+  fs.readFileSync(new URL('./serviceAccountKey.json', import.meta.url))
+);
 const router = express.Router();
 
 // Multer สำหรับอ่านไฟล์จาก request (รองรับหลายไฟล์)
