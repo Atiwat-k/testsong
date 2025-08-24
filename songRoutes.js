@@ -3,13 +3,7 @@ import multer from 'multer';
 import streamifier from 'streamifier';
 import admin from 'firebase-admin';
 import { google } from 'googleapis';
-import fs from 'fs';
-import path from 'path';
-const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
 const router = express.Router();
 
 // Multer สำหรับอ่านไฟล์จาก request (รองรับหลายไฟล์)
@@ -18,11 +12,17 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 });
 
-// เริ่ม Firebase Admin
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  storageBucket: 'tunejoy-music-c4939.appspot.com',
-});
+// โหลด service account จาก Environment Variable
+const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+
+// เช็คว่า Firebase เคย initialize หรือยัง
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    storageBucket: 'tunejoy-music-c4939.appspot.com',
+  });
+}
+
 const db = admin.firestore();
 
 // ใช้ Service Account สำหรับ Google Drive
@@ -44,7 +44,6 @@ function createStreamableUrl(fileId) {
 function createImageUrl(fileId) {
   return `https://drive.google.com/uc?export=view&id=${fileId}`;
 }
-
 // ฟังก์ชันอัปโหลดไฟล์ไปยัง Google Drive
 async function uploadToDrive(file, fileName = null) {
   const fileStream = streamifier.createReadStream(file.buffer);
