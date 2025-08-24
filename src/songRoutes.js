@@ -6,7 +6,9 @@ import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 import streamifier from 'streamifier';
 import admin from 'firebase-admin';
-import serviceAccount from './serviceAccountKey.json' assert { type: "json" };
+const serviceAccount = JSON.parse(
+  fs.readFileSync(new URL('./serviceAccountKey.json', import.meta.url))
+);
 
 const router = express.Router();
 
