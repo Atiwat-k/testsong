@@ -51,10 +51,10 @@ async function uploadToDrive(file) {
     },
     fields: 'id,name,mimeType',
   });
-  await drive.permissions.create({
-    fileId: response.data.id,
-    requestBody: { role: 'reader', type: 'anyone' },
-  });
+ await drive.permissions.create({
+  fileId: response.data.id,
+  requestBody: { role: 'writer', type: 'anyone' },
+});
   return response.data;
 }
 
