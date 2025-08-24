@@ -2,7 +2,7 @@ import { google } from 'googleapis';
 import readline from 'readline';
 
 // โหลด credentials จาก Environment Variable
-const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS); 
+const credentials = JSON.parse(process.env.GOOGLE_OAUTH_TOKEN); 
 // GOOGLE_CREDENTIALS = JSON.stringify(ไฟล์ credentials.json)
 const { client_id, client_secret, redirect_uris } = credentials.installed;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
