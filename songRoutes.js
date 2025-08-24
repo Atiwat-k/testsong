@@ -16,12 +16,10 @@ const upload = multer({
 const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
 // เช็คว่า Firebase เคย initialize หรือยัง
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    storageBucket: 'tunejoy-music-c4939.appspot.com',
-  });
-}
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  storageBucket: 'tunejoy-music-c4939.appspot.com',
+});
 
 const db = admin.firestore();
 

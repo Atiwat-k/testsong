@@ -1,13 +1,12 @@
-const { google } = require('googleapis');
-const fs = require('fs');
-const readline = require('readline');
+import { google } from 'googleapis';
+import readline from 'readline';
 
-// โหลด credentials
-const credentials = JSON.parse(fs.readFileSync('credentials.json'));
-const { client_id, client_secret, redirect_uris } = credentials.installed; // ถ้า Desktop App
+// โหลด credentials จาก Environment Variable
+const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS); 
+// GOOGLE_CREDENTIALS = JSON.stringify(ไฟล์ credentials.json)
+const { client_id, client_secret, redirect_uris } = credentials.installed;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
-// สร้าง URL สำหรับให้ผู้ใช้ authorize
 const SCOPES = ['https://www.googleapis.com/auth/drive.file']; // สิทธิ์อัปโหลดไฟล์
 const authUrl = oAuth2Client.generateAuthUrl({
   access_type: 'offline',
@@ -16,7 +15,7 @@ const authUrl = oAuth2Client.generateAuthUrl({
 
 console.log('Authorize this app by visiting this url:', authUrl);
 
-// อ่าน code ที่ผู้ใช้กรอกหลัง authorize
+// ใช้ readline เพื่อรับ code
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
@@ -27,8 +26,12 @@ rl.question('Enter the code from that page here: ', async (code) => {
   try {
     const { tokens } = await oAuth2Client.getToken(code);
     oAuth2Client.setCredentials(tokens);
-    fs.writeFileSync('token.json', JSON.stringify(tokens, null, 2));
-    console.log('Token stored to token.json');
+
+    // แทนการเขียนไฟล์ ให้ print แล้ว copy ไปใส่ Environment Variable
+    console.log('Copy this token and set it as GOOGLE_OAUTH_TOKEN:');
+    console.log(JSON.stringify(tokens, null, 2));
+
+    console.log('Done! You can now use process.env.GOOGLE_OAUTH_TOKEN in your server code.');
   } catch (err) {
     console.error('Error retrieving access token', err);
   }
