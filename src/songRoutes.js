@@ -1,6 +1,8 @@
 import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 import streamifier from 'streamifier';
 import admin from 'firebase-admin';
@@ -8,12 +10,14 @@ import serviceAccount from './serviceAccountKey.json' assert { type: "json" };
 
 const router = express.Router();
 
-// Multer สำหรับอ่านไฟล์จาก request (รองรับหลายไฟล์)
+// สร้าง __dirname สำหรับ ES Module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Multer สำหรับอ่านไฟล์จาก request
 const upload = multer({ 
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit
-  }
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
 
 // เริ่ม Firebase Admin
@@ -21,21 +25,23 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   storageBucket: 'tunejoy-music-c4939.appspot.com',
 });
-
 const db = admin.firestore();
 
 // Google Drive OAuth2 setup
-const credentials = JSON.parse(fs.readFileSync('credentials.json'));
+const credentialsPath = path.join(__dirname, 'credentials.json'); // ใช้ absolute path
+const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf-8'));
 const { client_secret, client_id, redirect_uris } = credentials.web;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
 // โหลด token ถ้ามี
-if (fs.existsSync('token.json')) {
-  const token = JSON.parse(fs.readFileSync('token.json'));
+const tokenPath = path.join(__dirname, 'token.json');
+if (fs.existsSync(tokenPath)) {
+  const token = JSON.parse(fs.readFileSync(tokenPath, 'utf-8'));
   oAuth2Client.setCredentials(token);
+
   oAuth2Client.on('tokens', (tokens) => {
     if (tokens.refresh_token) {
-      fs.writeFileSync('token.json', JSON.stringify(tokens, null, 2));
+      fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2));
     }
   });
 } else {
@@ -61,7 +67,6 @@ async function uploadToDrive(file, fileName = null) {
   const fileStream = streamifier.createReadStream(file.buffer);
   const uploadFileName = fileName || file.originalname;
 
-  // อัปโหลดไป Google Drive
   const response = await drive.files.create({
     requestBody: {
       name: uploadFileName,
@@ -75,7 +80,6 @@ async function uploadToDrive(file, fileName = null) {
     fields: 'id, name, mimeType',
   });
 
-  // ตั้งให้ใครก็ได้เข้าถึงไฟล์
   await drive.permissions.create({
     fileId: response.data.id,
     requestBody: { role: 'reader', type: 'anyone' },
@@ -87,9 +91,7 @@ async function uploadToDrive(file, fileName = null) {
 // ฟังก์ชันลบไฟล์จาก Google Drive
 async function deleteFromDrive(fileId) {
   try {
-    await drive.files.delete({
-      fileId: fileId
-    });
+    await drive.files.delete({ fileId });
     return true;
   } catch (error) {
     console.error('Error deleting file from Google Drive:', error);

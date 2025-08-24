@@ -1,5 +1,5 @@
 import express from 'express';
-import songRoutes from '../songRoutes.js'; // ปรับ path ให้ตรงกับตำแหน่งไฟล์จริง
+import songRoutes from './songRoutes.js'; // ปรับ path ให้ตรงกับตำแหน่งไฟล์จริง
 
 const app = express();
 app.use(express.json());
