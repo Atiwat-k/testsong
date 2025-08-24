@@ -1,25 +1,18 @@
 import express from 'express';
 import multer from 'multer';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { google } from 'googleapis';
 import streamifier from 'streamifier';
 import admin from 'firebase-admin';
-const serviceAccount = JSON.parse(
-  fs.readFileSync(new URL('./serviceAccountKey.json', import.meta.url))
-);
+import { google } from 'googleapis';
+import fs from 'fs';
+import path from 'path';
+import serviceAccount from './serviceAccountKey.json' assert { type: "json" };
 
 const router = express.Router();
 
-// สร้าง __dirname สำหรับ ES Module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Multer สำหรับอ่านไฟล์จาก request
+// Multer สำหรับอ่านไฟล์จาก request (รองรับหลายไฟล์)
 const upload = multer({ 
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 });
 
 // เริ่ม Firebase Admin
@@ -29,29 +22,14 @@ admin.initializeApp({
 });
 const db = admin.firestore();
 
-// Google Drive OAuth2 setup
-const credentialsPath = path.join(__dirname, 'credentials.json'); // ใช้ absolute path
-const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf-8'));
-const { client_secret, client_id, redirect_uris } = credentials.web;
-const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+// ใช้ Service Account สำหรับ Google Drive
+const auth = new google.auth.GoogleAuth({
+  credentials: serviceAccount,
+  scopes: ['https://www.googleapis.com/auth/drive'],
+});
+const drive = google.drive({ version: 'v3', auth });
 
-// โหลด token ถ้ามี
-const tokenPath = path.join(__dirname, 'token.json');
-if (fs.existsSync(tokenPath)) {
-  const token = JSON.parse(fs.readFileSync(tokenPath, 'utf-8'));
-  oAuth2Client.setCredentials(token);
-
-  oAuth2Client.on('tokens', (tokens) => {
-    if (tokens.refresh_token) {
-      fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2));
-    }
-  });
-} else {
-  console.log("ต้อง run OAuth flow เพื่อสร้าง token.json ก่อนใช้งาน");
-}
-
-const drive = google.drive({ version: 'v3', auth: oAuth2Client });
-// ID โฟลเดอร์เป้าหมายสำหรับอัปโหลดไฟล์
+// ใส่ folderId ของโฟลเดอร์ Google Drive
 const folderId = '13ts1MGAPzPteh-HfR7D_IebDU_v8TOjR';
 
 // ฟังก์ชันสร้าง URL สำหรับสตรีมเสียง
@@ -79,9 +57,10 @@ async function uploadToDrive(file, fileName = null) {
       mimeType: file.mimetype,
       body: fileStream,
     },
-    fields: 'id, name, mimeType',
+    fields: 'id,name,mimeType',
   });
 
+  // ตั้งให้ใครก็ได้เข้าถึงไฟล์
   await drive.permissions.create({
     fileId: response.data.id,
     requestBody: { role: 'reader', type: 'anyone' },
@@ -101,10 +80,11 @@ async function deleteFromDrive(fileId) {
   }
 }
 
-// POST /add-song - อัปโหลดเพลงและรูปภาพ
+// --- Routes ต่าง ๆ --- //
+// POST /add-song
 router.post('/add-song', upload.fields([
-  { name: 'file', maxCount: 1 }, // ไฟล์เสียง
-  { name: 'image', maxCount: 1 } // ไฟล์รูปภาพ
+  { name: 'file', maxCount: 1 },
+  { name: 'image', maxCount: 1 },
 ]), async (req, res) => {
   if (!req.files || !req.files['file']) {
     return res.status(400).json({ message: 'No audio file uploaded.' });
@@ -114,49 +94,36 @@ router.post('/add-song', upload.fields([
     const audioFile = req.files['file'][0];
     const imageFile = req.files['image'] ? req.files['image'][0] : null;
 
-    // อัปโหลดไฟล์เสียง
     const audioDriveFile = await uploadToDrive(audioFile);
     const audioUrl = createStreamableUrl(audioDriveFile.id);
 
     let imageUrl = null;
     let imageDriveId = null;
-
-    // อัปโหลดไฟล์รูปภาพ (ถ้ามี)
     if (imageFile) {
       const imageDriveFile = await uploadToDrive(imageFile);
       imageUrl = createImageUrl(imageDriveFile.id);
       imageDriveId = imageDriveFile.id;
     }
 
-    // ข้อมูลเพลงสำหรับ Firestore
     const songData = {
       name: req.body.name || audioFile.originalname,
       artist: req.body.artist || 'Unknown',
       category: req.body.category || 'Uncategorized',
       url: audioUrl,
       googleDriveId: audioDriveFile.id,
-      imageUrl: imageUrl,
-      imageDriveId: imageDriveId,
+      imageUrl,
+      imageDriveId,
       mimeType: audioDriveFile.mimeType,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    // บันทึกลง Firestore
     const docRef = await db.collection('songs').add(songData);
 
-    res.status(200).json({ 
-      message: 'Song and image added successfully.', 
-      song: { 
-        id: docRef.id, 
-        ...songData 
-      } 
-    });
+    res.status(200).json({ message: 'Song and image added successfully', song: { id: docRef.id, ...songData } });
+
   } catch (error) {
-    console.error('Error uploading:', error);
-    res.status(500).json({ 
-      message: 'Error uploading to Google Drive', 
-      error: error.message 
-    });
+    console.error(error);
+    res.status(500).json({ message: 'Error uploading to Google Drive', error: error.message });
   }
 });
 
