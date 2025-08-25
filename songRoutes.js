@@ -45,16 +45,11 @@ async function uploadToDrive(file) {
       mimeType: file.mimetype,
       parents: [folderId],
     },
-    media: {
-      mimeType: file.mimetype,
-      body: fileStream,
-    },
+    media: { mimeType: file.mimetype, body: fileStream },
     fields: 'id,name,mimeType',
   });
- await drive.permissions.create({
-  fileId: response.data.id,
-  requestBody: { role: 'writer', type: 'anyone' },
-});
+
+  // ไม่ต้องตั้ง permissions ให้ anyone
   return response.data;
 }
 
